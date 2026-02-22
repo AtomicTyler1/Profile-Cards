@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>com.atomic.profileviewer</AssemblyName>
+    <AssemblyTitle>ProfileViewer</AssemblyTitle>
+    <Version>0.1.2</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="Assets\Add-Friend.png" />
+    <None Remove="Assets\Open-Profile.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\Add-Friend.png" />
+    <EmbeddedResource Include="Assets\Open-Profile.png" />
+  </ItemGroup>
+
+</Project>
