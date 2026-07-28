@@ -136,7 +136,6 @@ namespace ProfileViewer
             frameRect.anchorMax = new Vector2(0, 0.5f);
             frameRect.sizeDelta = new Vector2(100f, 100f);
             frameRect.localPosition = new Vector3(-232f, 19f, 0f);
-            frameObj.GetComponent<Image>().sprite = Resources.GetBuiltinResource<Sprite>("UI/Skin/Knob.psd");
 
             GameObject avatarObj = new GameObject("ProfileAvatar", typeof(RectTransform), typeof(RawImage));
             avatarObj.transform.SetParent(frameObj.transform, false);
@@ -227,6 +226,11 @@ namespace ProfileViewer
             bool isFriend = (rel == EFriendRelationship.k_EFriendRelationshipFriend);
 
             addButton.gameObject.SetActive(!isFriend && !isMe);
+
+            profileButton.enabled = true;
+            profileButton.interactable = true;
+            addButton.enabled = true;
+            addButton.interactable = true;
 
             profileButton.onClick.AddListener(() => {
                 PlaySFX(profileButton.gameObject, "SFX Click");
