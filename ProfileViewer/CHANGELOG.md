@@ -1,3 +1,7 @@
+# v0.1.3 - Rebuild
+
+* Rebuilt the mod so now the buttons work again
+
 # v0.1.2 - PEAKER Support
 
 * PEAKER now works properly with this mod.
