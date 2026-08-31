@@ -118,10 +118,15 @@ namespace ProfileViewer
             addBtnObj.name = "AddFriendButton";
             addBtnObj.SetActive(true);
 
+            GameObject transferBtnObj = Instantiate(addBtnObj, local);
+            transferBtnObj.name = "TransferButton";
+            transferBtnObj.SetActive(true);
+
             HandleVisibility(__instance, local, kickButtonTrans, sliderTrans);
 
             CleanButton(profileBtnObj, "ProfileViewer.Assets.Open-Profile.png");
             CleanButton(addBtnObj, "ProfileViewer.Assets.Add-Friend.png");
+            CleanButton(transferBtnObj, "ProfileViewer.Assets.Transfer-MasterClient.png");
 
             GameObject frameObj = new GameObject("ProfileFrame", typeof(RectTransform), typeof(Image), typeof(Mask), typeof(Outline));
             frameObj.transform.SetParent(__instance.transform, false);
@@ -147,6 +152,7 @@ namespace ProfileViewer
 
             controller.profileButton = profileBtnObj.GetComponent<Button>();
             controller.addButton = addBtnObj.GetComponent<Button>();
+            controller.transferButton = transferBtnObj.GetComponent<Button>();
             controller.avatarDisplay = avatarObj.GetComponent<RawImage>();
             controller.parentSlider = __instance;
 
@@ -157,18 +163,21 @@ namespace ProfileViewer
         {
             Transform profTrans = local.Find("ProfileButton");
             Transform addTrans = local.Find("AddFriendButton");
-            if (profTrans == null || addTrans == null) return;
+            Transform transferTrans = local.Find("TransferButton");
 
+            if (profTrans == null || addTrans == null || transferTrans == null) return;
             if (instance.player.IsLocal)
             {
                 if (kickBtn != null) kickBtn.gameObject.SetActive(false);
                 if (slider != null) slider.gameObject.SetActive(false);
+                if (transferTrans != null) transferTrans.gameObject.SetActive(false);
                 profTrans.localPosition = kickBtn.localPosition;
             }
             else
             {
                 bool isHost = PhotonNetwork.LocalPlayer.IsMasterClient;
                 if (kickBtn != null) kickBtn.gameObject.SetActive(isHost);
+                if (transferTrans.gameObject != null) transferTrans.gameObject.SetActive(isHost);
                 if (slider != null) slider.gameObject.SetActive(true);
 
                 if (isHost)
@@ -182,6 +191,7 @@ namespace ProfileViewer
             }
 
             addTrans.localPosition = profTrans.localPosition + new Vector3(-55f, 0f, 0f);
+            transferTrans!.localPosition = addTrans.localPosition + new Vector3(-55f, 0f, 0f);
         }
 
         private static void CleanButton(GameObject btn, string iconPath)
@@ -203,6 +213,7 @@ namespace ProfileViewer
         public AudioLevelSlider parentSlider = null!;
         public Button profileButton = null!;
         public Button addButton = null!;
+        public Button transferButton = null!;
         public RawImage avatarDisplay = null!;
         private CSteamID currentSteamID = CSteamID.Nil;
 
@@ -217,20 +228,29 @@ namespace ProfileViewer
 
             profileButton.onClick.RemoveAllListeners();
             addButton.onClick.RemoveAllListeners();
+            transferButton.onClick.RemoveAllListeners();
 
             SetupButtonSFX(profileButton.gameObject);
             SetupButtonSFX(addButton.gameObject);
+            SetupButtonSFX(transferButton.gameObject);
 
             EFriendRelationship rel = SteamFriends.GetFriendRelationship(currentSteamID);
             bool isMe = parentSlider.player.IsLocal;
             bool isFriend = (rel == EFriendRelationship.k_EFriendRelationshipFriend);
 
             addButton.gameObject.SetActive(!isFriend && !isMe);
+            bool disabled = isFriend || isMe;
+            if (disabled)
+            {
+                transferButton.transform.localPosition += new Vector3(55f, 0f, 0f);
+            }
 
             profileButton.enabled = true;
             profileButton.interactable = true;
             addButton.enabled = true;
             addButton.interactable = true;
+            transferButton.enabled = true;
+            transferButton.interactable = true;
 
             profileButton.onClick.AddListener(() => {
                 PlaySFX(profileButton.gameObject, "SFX Click");
@@ -241,6 +261,13 @@ namespace ProfileViewer
                 PlaySFX(addButton.gameObject, "SFX Click");
                 SteamFriends.ActivateGameOverlayToUser("friendadd", currentSteamID);
                 addButton.gameObject.SetActive(false);
+            });
+
+            transferButton.onClick.AddListener(() =>
+            {
+                PlaySFX(addButton.gameObject, "SFX Click");
+                TryRequestHostTransfer(parentSlider.player.ActorNumber);
+                RefreshAll();
             });
         }
 
@@ -281,6 +308,29 @@ namespace ProfileViewer
         {
             profileButton?.onClick.RemoveAllListeners();
             addButton?.onClick.RemoveAllListeners();
+            transferButton?.onClick.RemoveAllListeners();
+        }
+
+        internal static bool TryRequestHostTransfer(int TargetActorNumber)
+        {
+            var CurrentRoom = PhotonNetwork.CurrentRoom;
+
+            if (
+                CurrentRoom is null || PhotonNetwork.OfflineMode || !PhotonNetwork.IsMasterClient ||
+                !CurrentRoom.Players.TryGetValue(TargetActorNumber, out Photon.Realtime.Player TargetPlayer) ||
+                TargetPlayer.IsLocal || TargetPlayer.IsInactive)
+            {
+                return false;
+            }
+
+            Plugin.Log.LogInfo($"Trying to give master client to: {TargetPlayer.NickName} ({TargetPlayer.ActorNumber})");
+            return PhotonNetwork.SetMasterClient(TargetPlayer);
+        }
+
+        private void RefreshAll()
+        {
+            // Updates the client, not sure how to update the whole server (including vanilla clients)
+            parentSlider.transform.parent.GetComponent<AudioLevels>().UpdateSliders();
         }
     }
 

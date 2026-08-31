@@ -15,6 +15,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Assets\Add-Friend.png" />
     <EmbeddedResource Include="Assets\Open-Profile.png" />
+	<EmbeddedResource Include="Assets\Transfer-MasterClient.png" />
   </ItemGroup>
 
 </Project>
