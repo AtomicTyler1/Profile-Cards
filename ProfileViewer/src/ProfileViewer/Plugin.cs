@@ -245,33 +245,7 @@ namespace ProfileViewer
         private CSteamID currentSteamID = CSteamID.Nil;
 
         private static PlatformUtility.PlatformFamily playerPlatform;
-
-        public void FetchProfileFromXuid(string xuid)
-        {
-            var xuidsToLookup = new List<string> { xuid };
-
-            // Query the Xbox Live Profile Service
-            XBL.XblProfileGetUserProfilesAsync(xuidsToLookup, (hresult, profiles) =>
-            {
-                if (HR.SUCCEEDED(hresult) && profiles != null && profiles.Count > 0)
-                {
-                    var profile = profiles[0];
-
-                    // Read the profile metadata
-                    string gamertag = profile.Gamertag;
-                    string gamerpicUri = profile.GameDisplayPicRaw;
-                    string realName = profile.RealName;
-
-                    Debug.Log($"Successfully fetched profile! Gamertag: {gamertag}");
-                    Debug.Log($"Gamerpic URL: {gamerpicUri}");
-                }
-                else
-                {
-                    Debug.LogError($"Failed to fetch Xbox profile. HResult: 0x{hresult:X}");
-                }
-            });
-        }
-
+       
         public void Refresh()
         {
             if (parentSlider?.player == null) return;
