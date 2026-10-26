@@ -9,13 +9,21 @@
 
   <ItemGroup>
     <None Remove="Assets\Add-Friend.png" />
+    <None Remove="Assets\Nintendo.png" />
     <None Remove="Assets\Open-Profile.png" />
+    <None Remove="Assets\Playstation.png" />
+    <None Remove="Assets\Steam.png" />
+    <None Remove="Assets\Xbox.png" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Assets\Add-Friend.png" />
+    <EmbeddedResource Include="Assets\Nintendo.png" />
     <EmbeddedResource Include="Assets\Open-Profile.png" />
+    <EmbeddedResource Include="Assets\Playstation.png" />
+    <EmbeddedResource Include="Assets\Steam.png" />
 	<EmbeddedResource Include="Assets\Transfer-MasterClient.png" />
+	<EmbeddedResource Include="Assets\Xbox.png" />
   </ItemGroup>
 
 </Project>

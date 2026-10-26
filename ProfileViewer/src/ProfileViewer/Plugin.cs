@@ -1,14 +1,21 @@
 ﻿using BepInEx;
 using BepInEx.Logging;
 using HarmonyLib;
+using MonoMod.Utils;
+using Peak.Network;
 using Peak.UI;
 using Photon.Pun;
 using Photon.Realtime;
+using Photon.Voice;
+using Portningsbolaget.Platforms;
 using Steamworks;
+using System;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using static Unity.XGamingRuntime.SDK;
 
 namespace ProfileViewer
 {
@@ -18,12 +25,22 @@ namespace ProfileViewer
         internal static ManualLogSource Log { get; private set; } = null!;
         public static Harmony harmony = null!;
 
+        public static Texture2D SteamIcon;
+        public static Texture2D XboxIcon;
+        public static Texture2D SwitchIcon;
+        public static Texture2D PlaystationIcon;
+
         private void Awake()
         {
             Log = Logger;
             harmony = new Harmony(Id);
             harmony.PatchAll();
             Log.LogInfo($"Plugin {Name} is loaded!");
+
+            SteamIcon = IconFromEmbeddedResource("ProfileViewer.Assets.Steam.png");
+            XboxIcon = IconFromEmbeddedResource("ProfileViewer.Assets.Xbox.png");
+            SwitchIcon = IconFromEmbeddedResource("ProfileViewer.Assets.Nintendo.png");
+            PlaystationIcon = IconFromEmbeddedResource("ProfileViewer.Assets.Playstation.png");
         }
 
         public static CSteamID GetSteamId(Photon.Realtime.Player player)
@@ -36,25 +53,6 @@ namespace ProfileViewer
                 }
             }
             return CSteamID.Nil;
-        }
-
-        public static Texture2D GetSteamAvatar(CSteamID steamID)
-        {
-            int handler = SteamFriends.GetMediumFriendAvatar(steamID);
-            if (handler == -1) return null;
-
-            uint width, height;
-            SteamUtils.GetImageSize(handler, out width, out height);
-
-            byte[] imageBuffer = new byte[width * height * 4];
-            if (SteamUtils.GetImageRGBA(handler, imageBuffer, (int)(width * height * 4)))
-            {
-                Texture2D texture = new Texture2D((int)width, (int)height, TextureFormat.RGBA32, false);
-                texture.LoadRawTextureData(imageBuffer);
-                texture.Apply();
-                return texture;
-            }
-            return null;
         }
 
         public static Texture2D IconFromEmbeddedResource(string resourceName)
@@ -106,8 +104,6 @@ namespace ProfileViewer
 
             Transform nameLayout = __instance.transform.Find("NameLayout");
             kickButtonTrans.localPosition += new Vector3(-60f, 15f, 0f);
-            local.Find("Percent").localPosition += new Vector3(40f, 5f, 0f);
-            local.Find("Icon").localPosition += new Vector3(40f, 5f, 0f);
             nameLayout.localPosition += new Vector3(0f, 40f, 0f);
 
             GameObject profileBtnObj = Instantiate(kickButtonTrans.gameObject, local);
@@ -122,11 +118,16 @@ namespace ProfileViewer
             transferBtnObj.name = "TransferButton";
             transferBtnObj.SetActive(true);
 
+            GameObject platformIndicator = Instantiate(addBtnObj, local);
+            platformIndicator.name = "PlatformIcon";
+            platformIndicator.SetActive(true);
+   
+
             HandleVisibility(__instance, local, kickButtonTrans, sliderTrans);
 
             CleanButton(profileBtnObj, "ProfileViewer.Assets.Open-Profile.png");
             CleanButton(addBtnObj, "ProfileViewer.Assets.Add-Friend.png");
-            CleanButton(transferBtnObj, "ProfileViewer.Assets.Transfer-MasterClient.png");
+            //CleanButton(transferBtnObj, "ProfileViewer.Assets.Transfer-MasterClient.png");
 
             GameObject frameObj = new GameObject("ProfileFrame", typeof(RectTransform), typeof(Image), typeof(Mask), typeof(Outline));
             frameObj.transform.SetParent(__instance.transform, false);
@@ -142,56 +143,81 @@ namespace ProfileViewer
             frameRect.sizeDelta = new Vector2(100f, 100f);
             frameRect.localPosition = new Vector3(-232f, 19f, 0f);
 
-            GameObject avatarObj = new GameObject("ProfileAvatar", typeof(RectTransform), typeof(RawImage));
-            avatarObj.transform.SetParent(frameObj.transform, false);
-            var avatarRect = avatarObj.GetComponent<RectTransform>();
-            avatarRect.anchorMin = Vector2.zero;
-            avatarRect.anchorMax = Vector2.one;
-            avatarRect.sizeDelta = Vector2.zero;
-            avatarObj.transform.localRotation = Quaternion.Euler(180f, 0f, 0f);
-
             controller.profileButton = profileBtnObj.GetComponent<Button>();
             controller.addButton = addBtnObj.GetComponent<Button>();
             controller.transferButton = transferBtnObj.GetComponent<Button>();
-            controller.avatarDisplay = avatarObj.GetComponent<RawImage>();
+            controller.profilePicture = __instance.transform.Find("PlayerUI/Avatar").gameObject;
             controller.parentSlider = __instance;
+            controller.platformIndicator = platformIndicator;
+            controller.platformIndicator.transform.localPosition = new Vector3(141.0476f, -35.7085f, 41.3511f);
+            controller.platformIndicator.transform.localScale = new Vector3(1.1f, 1.1f, 0);
+
+            controller.profilePicture.transform.SetParent(frameObj.transform);
+            controller.profilePicture.transform.localScale = new Vector3(1.65f, -1.65f, 0);
+            controller.profilePicture.transform.localPosition = Vector3.zero;
 
             controller.Refresh();
         }
 
         private static void HandleVisibility(AudioLevelSlider instance, Transform local, Transform kickBtn, Transform slider)
         {
+            if (instance == null || local == null) return;
+
             Transform profTrans = local.Find("ProfileButton");
             Transform addTrans = local.Find("AddFriendButton");
             Transform transferTrans = local.Find("TransferButton");
 
-            if (profTrans == null || addTrans == null || transferTrans == null) return;
+            Transform avatarTrans = local.parent != null ? local.parent.Find("ProfileFrame/Avatar") : null;
+
+            if (profTrans == null || addTrans == null || transferTrans == null)
+            {
+                Plugin.Log.LogWarning("One or more UI buttons missing during HandleVisibility refresh.");
+                return;
+            }
+
             if (instance.player.IsLocal)
             {
-                if (kickBtn != null) kickBtn.gameObject.SetActive(false);
-                if (slider != null) slider.gameObject.SetActive(false);
-                if (transferTrans != null) transferTrans.gameObject.SetActive(false);
-                profTrans.localPosition = kickBtn.localPosition;
+                if (kickBtn != null)
+                {
+                    kickBtn.gameObject.SetActive(false);
+                    profTrans.localPosition = kickBtn.localPosition;
+                }
+
+                if (slider != null)
+                {
+                    slider.gameObject.SetActive(false);
+                }
+
+                transferTrans.gameObject.SetActive(false);
             }
             else
             {
                 bool isHost = PhotonNetwork.LocalPlayer.IsMasterClient;
-                if (kickBtn != null) kickBtn.gameObject.SetActive(isHost);
-                if (transferTrans.gameObject != null) transferTrans.gameObject.SetActive(isHost);
-                if (slider != null) slider.gameObject.SetActive(true);
 
-                if (isHost)
+                if (kickBtn != null)
                 {
-                    profTrans.localPosition = kickBtn.localPosition + new Vector3(-55f, 0f, 0f);
+                    kickBtn.gameObject.SetActive(isHost);
+                    //profTrans.localPosition = isHost
+                        //? kickBtn.localPosition + new Vector3(-55f, 0f, 0f)
+                        //: kickBtn.localPosition;
                 }
-                else
+
+                //transferTrans.gameObject.SetActive(isHost);
+
+                if (slider != null)
                 {
-                    profTrans.localPosition = kickBtn.localPosition;
+                    slider.gameObject.SetActive(true);
                 }
             }
 
             addTrans.localPosition = profTrans.localPosition + new Vector3(-55f, 0f, 0f);
-            transferTrans!.localPosition = addTrans.localPosition + new Vector3(-55f, 0f, 0f);
+            //transferTrans.localPosition = addTrans.localPosition + new Vector3(-55f, 0f, 0f);
+
+            if (avatarTrans != null)
+            {
+                avatarTrans.localPosition = Vector3.zero;
+                avatarTrans.localScale = new Vector3(1.65f, -1.65f, 0f);
+            }
         }
 
         private static void CleanButton(GameObject btn, string iconPath)
@@ -208,31 +234,60 @@ namespace ProfileViewer
         private static bool isModInstalled(string guid) => BepInEx.Bootstrap.Chainloader.PluginInfos.ContainsKey(guid);
     }
 
-    public class ProfileController : MonoBehaviour
+    public class ProfileController : MonoBehaviour, IPunOwnershipCallbacks
     {
         public AudioLevelSlider parentSlider = null!;
         public Button profileButton = null!;
         public Button addButton = null!;
         public Button transferButton = null!;
-        public RawImage avatarDisplay = null!;
+        public GameObject profilePicture = null!;
+        public GameObject platformIndicator = null!;
         private CSteamID currentSteamID = CSteamID.Nil;
+
+        private static PlatformUtility.PlatformFamily playerPlatform;
+
+        public void FetchProfileFromXuid(string xuid)
+        {
+            var xuidsToLookup = new List<string> { xuid };
+
+            // Query the Xbox Live Profile Service
+            XBL.XblProfileGetUserProfilesAsync(xuidsToLookup, (hresult, profiles) =>
+            {
+                if (HR.SUCCEEDED(hresult) && profiles != null && profiles.Count > 0)
+                {
+                    var profile = profiles[0];
+
+                    // Read the profile metadata
+                    string gamertag = profile.Gamertag;
+                    string gamerpicUri = profile.GameDisplayPicRaw;
+                    string realName = profile.RealName;
+
+                    Debug.Log($"Successfully fetched profile! Gamertag: {gamertag}");
+                    Debug.Log($"Gamerpic URL: {gamerpicUri}");
+                }
+                else
+                {
+                    Debug.LogError($"Failed to fetch Xbox profile. HResult: 0x{hresult:X}");
+                }
+            });
+        }
 
         public void Refresh()
         {
             if (parentSlider?.player == null) return;
 
-            currentSteamID = Plugin.GetSteamId(parentSlider.player);
+            Enum.TryParse<PlatformUtility.PlatformFamily>((string)parentSlider.player.CustomProperties["PlatformFamily"], out var platform);
+            playerPlatform = platform;
 
-            Texture2D tex = Plugin.GetSteamAvatar(currentSteamID);
-            if (tex != null) avatarDisplay.texture = tex;
+            currentSteamID = Plugin.GetSteamId(parentSlider.player);
 
             profileButton.onClick.RemoveAllListeners();
             addButton.onClick.RemoveAllListeners();
-            transferButton.onClick.RemoveAllListeners();
+            //transferButton.onClick.RemoveAllListeners();
 
             SetupButtonSFX(profileButton.gameObject);
             SetupButtonSFX(addButton.gameObject);
-            SetupButtonSFX(transferButton.gameObject);
+            //SetupButtonSFX(transferButton.gameObject);
 
             EFriendRelationship rel = SteamFriends.GetFriendRelationship(currentSteamID);
             bool isMe = parentSlider.player.IsLocal;
@@ -249,26 +304,54 @@ namespace ProfileViewer
             profileButton.interactable = true;
             addButton.enabled = true;
             addButton.interactable = true;
-            transferButton.enabled = true;
-            transferButton.interactable = true;
+
+            // Disable this because it doesnt work and I need to update the mod :plink:
+            transferButton.enabled = false;
+            transferButton.interactable = false;
+
+            SetPlatformButton();
 
             profileButton.onClick.AddListener(() => {
                 PlaySFX(profileButton.gameObject, "SFX Click");
-                SteamFriends.ActivateGameOverlayToUser("steamid", currentSteamID);
+                ProfileButtonAction();
             });
 
             addButton.onClick.AddListener(() => {
                 PlaySFX(addButton.gameObject, "SFX Click");
-                SteamFriends.ActivateGameOverlayToUser("friendadd", currentSteamID);
+                AddFriendAction();
                 addButton.gameObject.SetActive(false);
             });
 
+            /*
             transferButton.onClick.AddListener(() =>
             {
                 PlaySFX(addButton.gameObject, "SFX Click");
-                TryRequestHostTransfer(parentSlider.player.ActorNumber);
+                TryRequestHostTransfer(parentSlider.player.ActorNumber, currentSteamID);
                 RefreshAll();
             });
+            */
+        }
+
+        public void ProfileButtonAction()
+        {
+            switch (playerPlatform)
+            {
+                case PlatformUtility.PlatformFamily.Windows:
+                    SteamFriends.ActivateGameOverlayToUser("steamid", currentSteamID);
+                    break;
+                //case PlatformUtility.PlatformFamily.Xbox:
+
+            }
+
+        }
+        public void AddFriendAction()
+        {
+            switch (playerPlatform)
+            {
+                case PlatformUtility.PlatformFamily.Windows:
+                    SteamFriends.ActivateGameOverlayToUser("friendadd", currentSteamID);
+                    break;
+            }
         }
 
         private void SetupButtonSFX(GameObject btnObj)
@@ -304,6 +387,37 @@ namespace ProfileViewer
             }
         }
 
+        public void SetPlatformButton()
+        {
+            if (platformIndicator.GetComponent<KickButton>()) Destroy(platformIndicator.GetComponent<KickButton>());
+            if (platformIndicator.GetComponent<Animator>()) Destroy(platformIndicator.GetComponent<Animator>());
+
+            Transform icon = platformIndicator.transform.Find("KickIcon");
+            Texture2D tex = null;
+
+            switch (playerPlatform)
+            {
+                case PlatformUtility.PlatformFamily.Windows:
+                    tex = Plugin.SteamIcon;
+                    break;
+                case PlatformUtility.PlatformFamily.Xbox:
+                    tex = Plugin.XboxIcon;
+                    break;
+                case PlatformUtility.PlatformFamily.Switch:
+                    tex = Plugin.SwitchIcon;
+                    break;
+                case PlatformUtility.PlatformFamily.Playstation:
+                    tex = Plugin.PlaystationIcon;
+                    break;
+                default:
+                    tex = Plugin.SteamIcon;
+                    break;
+            }
+
+            icon.GetComponent<Image>().sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+            icon.gameObject.SetActive(true);
+        }
+
         private void OnDestroy()
         {
             profileButton?.onClick.RemoveAllListeners();
@@ -311,26 +425,78 @@ namespace ProfileViewer
             transferButton?.onClick.RemoveAllListeners();
         }
 
-        internal static bool TryRequestHostTransfer(int TargetActorNumber)
+        internal static bool TryRequestHostTransfer(int TargetActorNumber, CSteamID steamId)
         {
             var CurrentRoom = PhotonNetwork.CurrentRoom;
+            var Matchmaking = NetCode.Matchmaking;
 
-            if (
-                CurrentRoom is null || PhotonNetwork.OfflineMode || !PhotonNetwork.IsMasterClient ||
+            if (CurrentRoom is null || PhotonNetwork.OfflineMode ||
+                !PhotonNetwork.IsMasterClient || !Matchmaking.InLobby ||
                 !CurrentRoom.Players.TryGetValue(TargetActorNumber, out Photon.Realtime.Player TargetPlayer) ||
-                TargetPlayer.IsLocal || TargetPlayer.IsInactive)
+                TargetPlayer.IsLocal || TargetPlayer.IsInactive ||
+                !Matchmaking.PlayerIsInLobby(TargetPlayer.UserId) ||
+                !ulong.TryParse(Matchmaking.LobbyId, out ulong LobbyIdValue))
+            {
+                return false;
+            }
+            CSteamID LobbyId = new(LobbyIdValue);
+            if (Steamworks.SteamMatchmaking.GetLobbyOwner(LobbyId) != SteamUser.GetSteamID())
             {
                 return false;
             }
 
-            Plugin.Log.LogInfo($"Trying to give master client to: {TargetPlayer.NickName} ({TargetPlayer.ActorNumber})");
-            return PhotonNetwork.SetMasterClient(TargetPlayer);
+            Steamworks.SteamMatchmaking.SetLobbyOwner(LobbyId, steamId);
+
+            bool Queued = PhotonNetwork.SetMasterClient(TargetPlayer);
+            Plugin.Log.LogInfo($"Photon host transfer queued={Queued}; " + $"target={TargetPlayer.NickName} " + $"({TargetPlayer.ActorNumber})");
+            return Queued;
         }
 
         private void RefreshAll()
         {
             // Updates the client, not sure how to update the whole server (including vanilla clients)
             parentSlider.transform.parent.GetComponent<AudioLevels>().UpdateSliders();
+        }
+
+        public void OnOwnershipRequest(PhotonView targetView, Photon.Realtime.Player requestingPlayer)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void OnOwnershipTransfered(PhotonView targetView, Photon.Realtime.Player previousOwner)
+        {
+            Photon.Realtime.Player NewMasterClient = PhotonNetwork.MasterClient;
+            var Matchmaking = NetCode.Matchmaking;
+            if (NewMasterClient is null || !Matchmaking.InLobby ||
+                !Matchmaking.PlayerIsInLobby(NewMasterClient.UserId) ||
+                !ulong.TryParse(Matchmaking.LobbyId, out ulong LobbyIdValue) ||
+                !ulong.TryParse(NewMasterClient.UserId, out ulong NewOwnerIdValue))
+            {
+                return;
+            }
+
+            CSteamID LobbyId = new(LobbyIdValue);
+            CSteamID NewOwnerId = new(NewOwnerIdValue);
+            CSteamID CurrentOwnerId = Steamworks.SteamMatchmaking.GetLobbyOwner(LobbyId);
+            if (CurrentOwnerId == NewOwnerId)
+            {
+                return;
+            }
+            if (CurrentOwnerId != SteamUser.GetSteamID())
+            {
+                return;
+            }
+            if (!Steamworks.SteamMatchmaking.SetLobbyOwner(LobbyId, NewOwnerId))
+            {
+                Plugin.Log.LogError("Photon host changed, but Steam lobby " + "ownership transfer failed.");
+                return;
+            }
+            Plugin.Log.LogInfo($"Steam lobby ownership transferred to " + $"{NewMasterClient.NickName} " + $"({NewOwnerIdValue}).");
+        }
+
+        public void OnOwnershipTransferFailed(PhotonView targetView, Photon.Realtime.Player senderOfFailedRequest)
+        {
+            throw new System.NotImplementedException();
         }
     }
 
