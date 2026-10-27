@@ -2,11 +2,25 @@
 
 This mod overhauls the pause menu for multiplayer!
 
+# SUPPORTS CONSOLES
+
+This mod has platform indicators and also allows for viewing Xbox player profile pictures and profile.
+
+> NOTE: Due to authentication, after loading enough profile pictures from xbox players you will hit a rate limit and wont be able to load more until the next day. I'm sorry this happens but I would need you to create and sign into microsoft otherwise.
+
 ## Features:
 
-- See people's steam icon! (People with a pure white icon might be a malicious modder!)
+- See people's steam icon!
 - See people's steam profile!
 - Instantly send someone a friend request!
+- View the platform of players
+- Better profile picture placement
+- New layout of the player list
+- Mute button moved to be in the style of the cards
+
+## Future
+
+In the future, I have plans for a transfer master client button, I just couldnt get it to work in this version.
 
 ## IMPORTANT!!!
 

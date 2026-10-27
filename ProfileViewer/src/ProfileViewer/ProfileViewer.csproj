@@ -4,7 +4,7 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <AssemblyName>com.atomic.profileviewer</AssemblyName>
     <AssemblyTitle>ProfileViewer</AssemblyTitle>
-    <Version>0.1.5</Version>
+    <Version>0.1.6</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -13,6 +13,7 @@
     <None Remove="Assets\Open-Profile.png" />
     <None Remove="Assets\Playstation.png" />
     <None Remove="Assets\Steam.png" />
+    <None Remove="Assets\Unmute.png" />
     <None Remove="Assets\Xbox.png" />
   </ItemGroup>
 
@@ -20,9 +21,11 @@
     <EmbeddedResource Include="Assets\Add-Friend.png" />
     <EmbeddedResource Include="Assets\Nintendo.png" />
     <EmbeddedResource Include="Assets\Open-Profile.png" />
+    <EmbeddedResource Include="Assets\Mute.png" />
     <EmbeddedResource Include="Assets\Playstation.png" />
     <EmbeddedResource Include="Assets\Steam.png" />
 	<EmbeddedResource Include="Assets\Transfer-MasterClient.png" />
+	<EmbeddedResource Include="Assets\Unmute.png" />
 	<EmbeddedResource Include="Assets\Xbox.png" />
   </ItemGroup>
 

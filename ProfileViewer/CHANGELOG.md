@@ -1,6 +1,14 @@
+# v0.1.6 - New update
+
+* Platform indicators
+* Profile pictures for Xbox (Unfortunately limitted)
+* Steam profiles should always load, bug in vanilla where they sometimes don't
+* View Xbox players profiles
+* Better mute button
+
 # v0.1.5 - Fix warning
 
-* fixed a null warning appearing, it is useless
+* Fixed a null warning appearing, it is useless
 
 # v0.1.4 - Bug Fix
 
