@@ -6,7 +6,7 @@ This mod overhauls the pause menu for multiplayer!
 
 This mod has platform indicators and also allows for viewing Xbox player profile pictures and profile.
 
-> NOTE: Due to authentication, after loading enough profile pictures from xbox players you will hit a rate limit and wont be able to load more until the next day. I'm sorry this happens but I would need you to create and sign into microsoft otherwise.
+> To load these profile pictures, we send a request to `peoplehub-public.xboxlive.com`, if you dont like microslop, don't join with xbox players.
 
 ## Features:
 

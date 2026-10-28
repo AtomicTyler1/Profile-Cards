@@ -12,6 +12,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.RegularExpressions;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -48,6 +49,7 @@ namespace ProfileViewer
     public partial class Plugin : BaseUnityPlugin
     {
         public static bool TransferButtonEnabled = false;
+        public static Plugin Instance { get; private set; } = null!;
 
         internal static ManualLogSource Log { get; private set; } = null!;
         public static Harmony harmony = null!;
@@ -88,6 +90,7 @@ namespace ProfileViewer
 
         private void Awake()
         {
+            Instance = this;
             Log = Logger;
             harmony = new Harmony(Id);
             harmony.PatchAll();
@@ -334,7 +337,7 @@ namespace ProfileViewer
     public class ProfileController : MonoBehaviour, IPunOwnershipCallbacks
     {
         private const string XboxProfileUrl = "https://www.xbox.com/play/user/";
-        public const string XboxAvatarUrl = "https://unavatar.io/xboxgamertag/";
+        private const string XboxApiUrl = "https://peoplehub-public.xboxlive.com/people/gt(";
 
         private static readonly Vector3 IconScale = new(0.7f, 0.7f, 0.7f);
         private static readonly Vector3 IconHoverScale = new(0.8f, 0.8f, 0.8f);
@@ -355,10 +358,8 @@ namespace ProfileViewer
 
         private readonly List<Entry> entries = new();
         private static readonly Dictionary<string, Sprite> XboxAvatarCache = new();
-        private static readonly HashSet<string> PendingXboxFetches = new();
-        private static readonly HashSet<string> FailedXboxFetches = new();
-        private static readonly Queue<string> XboxFetchQueue = new();
-        private static bool isProcessingQueue = false;
+        private static readonly Dictionary<string, List<Image>> XboxWaiting = new();
+        private static readonly HashSet<string> XboxFailedFetches = new();
 
         private AudioLevelSlider slider = null!;
         private Transform kick = null!;
@@ -541,131 +542,95 @@ namespace ProfileViewer
 
         private void FetchXboxAvatar(string gamertag)
         {
-            string cleanTag = gamertag.Replace(" ", "");
+            string tag = gamertag.Replace(" ", "");
+            avatar.localScale = PlatformIconAvatarScale;
 
-            if (XboxAvatarCache.TryGetValue(cleanTag, out Sprite? cachedSprite))
+            if (XboxAvatarCache.TryGetValue(tag, out Sprite? cached))
             {
-                avatarImage!.sprite = cachedSprite;
-                avatar.localScale = PlatformIconAvatarScale;
+                avatarImage!.sprite = cached;
                 return;
             }
 
             Sprite? fallback = Plugin.LoadSprite("ProfileViewer.Assets.Xbox.png");
             if (fallback != null) avatarImage!.sprite = fallback;
-            avatar.localScale = PlatformIconAvatarScale;
 
-            if (FailedXboxFetches.Contains(cleanTag) || PendingXboxFetches.Contains(cleanTag) || XboxFetchQueue.Contains(cleanTag))
+            if (XboxFailedFetches.Contains(tag)) return;
+
+            if (!XboxWaiting.TryGetValue(tag, out List<Image>? waiting))
             {
-                return;
+                XboxWaiting[tag] = waiting = new List<Image>();
+                Plugin.Instance.StartCoroutine(DownloadXboxAvatar(tag));
             }
 
-            PendingXboxFetches.Add(cleanTag);
-            XboxFetchQueue.Enqueue(cleanTag);
+            if (!waiting.Contains(avatarImage!)) waiting.Add(avatarImage!);
+        }
 
-            if (!isProcessingQueue)
+        private static IEnumerator DownloadXboxAvatar(string tag)
+        {
+            string? error = null;
+            string? imageUrl = null;
+
+            using (UnityWebRequest request = UnityWebRequest.Get(XboxApiUrl + Uri.EscapeDataString(tag) + ")"))
             {
-                StartCoroutine(ProcessXboxQueueRoutine());
+                request.timeout = 10;
+                request.SetRequestHeader("X-Xbl-Contract-Version", "3");
+                request.SetRequestHeader("Accept-Language", "*");
+                yield return request.SendWebRequest();
+
+                if (request.result != UnityWebRequest.Result.Success)
+                {
+                    error = $"HTTP {request.responseCode} {request.error}";
+                }
+                else
+                {
+                    Match match = Regex.Match(request.downloadHandler.text, "\"displayPicRaw\"\\s*:\\s*\"([^\"]+)\"");
+                    if (match.Success) imageUrl = Regex.Unescape(match.Groups[1].Value);
+                    else error = "profile has no displayPicRaw";
+                }
             }
-        }
 
-        private IEnumerator ProcessXboxQueueRoutine()
-        {
-            isProcessingQueue = true;
+            Sprite? sprite = null;
 
-            while (XboxFetchQueue.Count > 0)
+            if (imageUrl != null)
             {
-                string cleanTag = XboxFetchQueue.Dequeue();
-                yield return StartCoroutine(DownloadXboxAvatarRoutine(cleanTag));
-
-                yield return new WaitForSeconds(1f);
-            }
-
-            isProcessingQueue = false;
-        }
-
-        [Serializable]
-        private class UnavatarResponse
-        {
-            public string url = string.Empty;
-        }
-
-        private IEnumerator DownloadXboxAvatarRoutine(string cleanTag)
-        {
-            string jsonUrl = XboxAvatarUrl + Uri.EscapeDataString(cleanTag) + "?json";
-            using UnityWebRequest jsonRequest = UnityWebRequest.Get(jsonUrl);
-            jsonRequest.timeout = 10;
-
-            try
-            {
-                yield return jsonRequest.SendWebRequest();
-
-                if (jsonRequest.responseCode == 429 || jsonRequest.result != UnityWebRequest.Result.Success)
-                {
-                    FailedXboxFetches.Add(cleanTag);
-                    yield break;
-                }
-
-                string jsonText = jsonRequest.downloadHandler.text;
-                UnavatarResponse? response = null;
-
-                try
-                {
-                    response = JsonUtility.FromJson<UnavatarResponse>(jsonText);
-                }
-                catch (Exception e)
-                {
-                    Plugin.Log.LogWarning($"Failed to parse Xbox avatar JSON for '{cleanTag}': {e.Message}");
-                }
-
-                if (response == null || string.IsNullOrEmpty(response.url))
-                {
-                    FailedXboxFetches.Add(cleanTag);
-                    yield break;
-                }
-
-                string imageUrl = response.url;
-                int formatIndex = imageUrl.IndexOf("&format=");
-                if (formatIndex > 0)
-                {
-                    imageUrl = imageUrl.Substring(0, formatIndex);
-                }
-
                 using UnityWebRequest imageRequest = UnityWebRequest.Get(imageUrl);
                 imageRequest.timeout = 10;
                 yield return imageRequest.SendWebRequest();
 
-                if (imageRequest.responseCode == 429 || imageRequest.result != UnityWebRequest.Result.Success)
+                if (imageRequest.result != UnityWebRequest.Result.Success)
                 {
-                    FailedXboxFetches.Add(cleanTag);
-                    yield break;
+                    error = $"image HTTP {imageRequest.responseCode} {imageRequest.error}";
                 }
-
-                byte[] bytes = imageRequest.downloadHandler.data;
-                if (bytes == null || bytes.Length == 0)
+                else
                 {
-                    FailedXboxFetches.Add(cleanTag);
-                    yield break;
-                }
-
-                Texture2D texture = new Texture2D(2, 2);
-                if (!texture.LoadImage(bytes))
-                {
-                    FailedXboxFetches.Add(cleanTag);
-                    yield break;
-                }
-
-                Sprite newSprite = Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f));
-                XboxAvatarCache[cleanTag] = newSprite;
-
-                if (built && ReadPlayer() && PlayerName.Replace(" ", "") == cleanTag && avatarImage != null)
-                {
-                    avatarImage.sprite = newSprite;
-                    avatar.localScale = PlatformIconAvatarScale;
+                    var texture = new Texture2D(2, 2);
+                    if (texture.LoadImage(imageRequest.downloadHandler.data))
+                    {
+                        sprite = Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f));
+                    }
+                    else
+                    {
+                        error = "image could not be decoded";
+                    }
                 }
             }
-            finally
+
+            XboxWaiting.TryGetValue(tag, out List<Image>? waiting);
+            XboxWaiting.Remove(tag);
+
+            if (sprite == null)
             {
-                PendingXboxFetches.Remove(cleanTag);
+                XboxFailedFetches.Add(tag);
+                Plugin.Log.LogWarning($"Xbox avatar fetch failed for '{tag}': {error}");
+                yield break;
+            }
+
+            XboxAvatarCache[tag] = sprite;
+
+            if (waiting == null) yield break;
+            foreach (Image image in waiting)
+            {
+                if (image != null) image.sprite = sprite;
             }
         }
 

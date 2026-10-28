@@ -1,3 +1,9 @@
+# v0.1.7 - Better Xbox integration
+
+* The xbox request workflow was changed, you can now load *unlimited* xbox profiles
+
+Big credit for one of my friends for telling me about the official API I couldnt find anywhere. (@borghettoo)
+
 # v0.1.6 - New update
 
 * Platform indicators
